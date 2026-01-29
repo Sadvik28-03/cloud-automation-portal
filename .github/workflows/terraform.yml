@@ -1,65 +1,67 @@
-name: Terraform Pipeline
+name: Terraform CI Pipeline
 
 on:
-  workflow_dispatch:
-    inputs:
-      request_id:
-        description: "Provision request ID"
-        required: true
+  push:
+    branches:
+      - main
+workflow_dispatch:
 
 jobs:
-  terraform:
-    runs-on: ubuntu-latest
+terraform:
+runs-on: ubuntu-latest
 
-    # 🔐 AWS credentials from GitHub Secrets
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+steps:
+      # Step 1: Checkout repository
+- name: Checkout code
+uses: actions/checkout@v3
+
+      # Step 2: Setup Terraform
+- name: Setup Terraform
+uses: hashicorp/setup-terraform@v2
+with:
+terraform_version: 1.6.6
+
+      # Step 3: Configure AWS Credentials (from GitHub Secrets)
+- name: Configure AWS Credentials
+uses: aws-actions/configure-aws-credentials@v4
+with:
+aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+aws-region: ${{ secrets.AWS_REGION }}
+
+      # Step 4: Terraform Init
+- name: Terraform Init
+working-directory: terraform
+run: terraform init
+
+      # Step 5: Terraform Plan
+- name: Terraform Plan
+working-directory: terraform
+run: terraform plan
+
+  apply:
+    needs: terraform
+    runs-on: ubuntu-latest
+    environment: production   #  MANUAL APPROVAL HERE
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.6.6
+        uses: hashicorp/setup-terraform@v2
 
-      # (Optional but VERY useful for debugging)
-      - name: Verify AWS Identity
-        run: aws sts get-caller-identity
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
 
-      - name: Terraform Plan
-        working-directory: terraform
-        run: terraform plan
-
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -auto-approve
-
-      # ✅ SUCCESS CALLBACK
-      - name: Notify Flask - SUCCESS
-        if: success()
-        run: |
-          curl -X POST http://<YOUR_PUBLIC_FLASK_URL>/pipeline-callback \
-          -H "Content-Type: application/json" \
-          -d '{
-            "request_id": "${{ github.event.inputs.request_id }}",
-            "status": "COMPLETED"
-          }'
-
-      # ❌ FAILURE CALLBACK
-      - name: Notify Flask - FAILURE
-        if: failure()
-        run: |
-          curl -X POST http://<YOUR_PUBLIC_FLASK_URL>/pipeline-callback \
-          -H "Content-Type: application/json" \
-          -d '{
-            "request_id": "${{ github.event.inputs.request_id }}",
-            "status": "FAILED"
-          }'
