@@ -6,6 +6,12 @@ on:
       request_id:
         description: "Provision request ID from Cloud Automation Portal"
         required: true
+      region:
+        description: "AWS region selected by user"
+        required: true
+      instance_type:
+        description: "EC2 instance type selected by user"
+        required: true
 
 jobs:
   terraform:
@@ -28,22 +34,28 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ github.event.inputs.region }}
 
       # 4️⃣ Terraform Init
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
 
-      # 5️⃣ Terraform Plan
-      - name: Terraform Plan
-        working-directory: terraform
-        run: terraform plan
-
-      # 6️⃣ Terraform Apply (AUTO – no approval)
+      # 5️⃣ Terraform Apply (with USER INPUTS)
       - name: Terraform Apply
         working-directory: terraform
-        run: terraform apply -auto-approve
+        run: |
+          terraform apply -auto-approve \
+            -var="region=${{ github.event.inputs.region }}" \
+            -var="instance_type=${{ github.event.inputs.instance_type }}"
+
+      # 6️⃣ Capture Terraform Outputs
+      - name: Get Terraform Outputs
+        id: tf_outputs
+        working-directory: terraform
+        run: |
+          echo "INSTANCE_ID=$(terraform output -raw instance_id)" >> $GITHUB_ENV
+          echo "PUBLIC_IP=$(terraform output -raw public_ip)" >> $GITHUB_ENV
 
       # ✅ SUCCESS CALLBACK
       - name: Notify Flask - SUCCESS
@@ -53,7 +65,9 @@ jobs:
           -H "Content-Type: application/json" \
           -d '{
             "request_id": "${{ github.event.inputs.request_id }}",
-            "status": "COMPLETED"
+            "status": "COMPLETED",
+            "instance_id": "'"$INSTANCE_ID"'",
+            "public_ip": "'"$PUBLIC_IP"'"
           }'
 
       # ❌ FAILURE CALLBACK
