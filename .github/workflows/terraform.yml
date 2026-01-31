@@ -28,29 +28,41 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-1   # TEMP, real region comes from DB
 
-      # 4️⃣ Terraform Init
+      # 4️⃣ Fetch user request details from Flask
+      - name: Fetch request details
+        run: |
+          RESPONSE=$(curl -s https://overfluent-vivan-nondepartmental.ngrok-free.dev/api/admin/request/${{ github.event.inputs.request_id }})
+          echo "REGION=$(echo $RESPONSE | jq -r .region)" >> $GITHUB_ENV
+          echo "INSTANCE_TYPE=$(echo $RESPONSE | jq -r .instance_type)" >> $GITHUB_ENV
+
+      # 5️⃣ Terraform Init
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
 
-      # 5️⃣ Terraform Plan
+      # 6️⃣ Terraform Plan (with user inputs)
       - name: Terraform Plan
         working-directory: terraform
-        run: terraform plan
+        run: |
+          terraform plan \
+          -var="region=$REGION" \
+          -var="instance_type=$INSTANCE_TYPE"
 
-      # 6️⃣ Terraform Apply (AUTO)
+      # 7️⃣ Terraform Apply (AUTO)
       - name: Terraform Apply
         working-directory: terraform
-        run: terraform apply -auto-approve
-
-      # 7️⃣ Capture Terraform Outputs
-      - name: Capture Terraform Outputs
-        working-directory: terraform
         run: |
-          echo "INSTANCE_ID=$(terraform output -raw instance_id)" >> $GITHUB_ENV
-          echo "PUBLIC_IP=$(terraform output -raw public_ip)" >> $GITHUB_ENV
+          terraform apply -auto-approve \
+          -var="region=$REGION" \
+          -var="instance_type=$INSTANCE_TYPE"
+
+      # 8️⃣ Capture Terraform Outputs
+      - name: Capture Terraform Outputs
+        run: |
+          echo "INSTANCE_ID=$(terraform -chdir=terraform output -raw instance_id)" >> $GITHUB_ENV
+          echo "PUBLIC_IP=$(terraform -chdir=terraform output -raw public_ip)" >> $GITHUB_ENV
 
       # ✅ SUCCESS CALLBACK
       - name: Notify Flask - SUCCESS
