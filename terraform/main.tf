@@ -6,8 +6,8 @@ variable "ami_map" {
   type = map(string)
   default = {
     us-east-1  = "ami-0c02fb55956c7d316"
-    ap-south-1 = "ami-0f5ee92e2d63afc18"
-    us-west-2  = "ami-03f65b8614a860c29"
+    eu-west-1  = "ami-0a8e758f5e873d1c1"
+    ap-south-1 = "ami-0da59f1af71ea4ad2"
   }
 }
 
